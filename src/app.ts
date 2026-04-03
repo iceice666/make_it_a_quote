@@ -58,7 +58,11 @@ function buildHealthPayload(runtime: AppRuntime) {
 }
 
 export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia {
-  const app = new Elysia(adapter ? { adapter } : undefined);
+  const app = new Elysia({
+    ...(adapter ? { adapter } : {}),
+    // Cloudflare Workers disallow runtime code generation used by Elysia AOT handlers.
+    aot: runtime.name !== 'cloudflare',
+  });
 
   app.post(
     '/api/resolve',
