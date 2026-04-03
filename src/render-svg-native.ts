@@ -1,8 +1,8 @@
 import { Resvg } from '@resvg/resvg-js';
 
 const FONT_FILES = [
-  `${import.meta.dir}/../assets/fonts/NotoSansCJKtc-Regular.otf`,
-  `${import.meta.dir}/../assets/fonts/NotoSansCJKtc-Bold.otf`,
+  `${import.meta.dir}/public/_worker/NotoSansCJKtc-Regular.otf`,
+  `${import.meta.dir}/public/_worker/NotoSansCJKtc-Bold.otf`,
 ];
 
 export function renderSvgToPng(svg: string, width: number): Uint8Array {

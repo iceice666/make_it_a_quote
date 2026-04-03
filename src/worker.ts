@@ -12,12 +12,21 @@ type Env = {
 const version = '0.1.0';
 let app: ReturnType<typeof createApp> | null = null;
 
+async function fetchAssetBytes(env: Env, path: string): Promise<Uint8Array> {
+  const response = await env.ASSETS.fetch(new Request(new URL(path, 'https://assets.local')));
+  if (!response.ok) {
+    throw new Error(`Failed to load asset ${path}: ${response.status} ${response.statusText}`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 function getApp(env: Env) {
   if (!app) {
     const runtime: AppRuntime = {
       name: 'cloudflare',
       version,
-      renderQuoteImage: renderSvgToPng,
+      renderQuoteImage: (svg, width) => renderSvgToPng(svg, width, (path) => fetchAssetBytes(env, path)),
       getBotToken: () => env.DISCORD_BOT_TOKEN,
     };
 

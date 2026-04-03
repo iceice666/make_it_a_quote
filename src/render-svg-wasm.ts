@@ -1,20 +1,50 @@
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
-import resvgWasm from '../node_modules/@resvg/resvg-wasm/index_bg.wasm';
-import fontBold from '../assets/fonts/NotoSansCJKtc-Bold.otf';
-import fontRegular from '../assets/fonts/NotoSansCJKtc-Regular.otf';
+
+type AssetLoader = (path: string) => Promise<Uint8Array>;
+
+const WASM_PATH = '/_worker/index_bg.wasm';
+const FONT_PATHS = [
+  '/_worker/NotoSansCJKtc-Regular.otf',
+  '/_worker/NotoSansCJKtc-Bold.otf',
+] as const;
 
 let wasmReady: Promise<void> | null = null;
+let fontBuffersReady: Promise<Uint8Array[]> | null = null;
 
-function ensureWasm(): Promise<void> {
+function ensureWasm(loadAsset: AssetLoader): Promise<void> {
   if (!wasmReady) {
-    wasmReady = initWasm(resvgWasm);
+    wasmReady = loadAsset(WASM_PATH)
+      .then((wasmBinary) => initWasm(wasmBinary))
+      .catch((error) => {
+        wasmReady = null;
+        throw error;
+      });
   }
 
   return wasmReady;
 }
 
-export async function renderSvgToPng(svg: string, width: number): Promise<Uint8Array> {
-  await ensureWasm();
+function loadFontBuffers(loadAsset: AssetLoader): Promise<Uint8Array[]> {
+  if (!fontBuffersReady) {
+    fontBuffersReady = Promise.all(FONT_PATHS.map((path) => loadAsset(path))).catch((error) => {
+      fontBuffersReady = null;
+      throw error;
+    });
+  }
+
+  return fontBuffersReady;
+}
+
+export async function renderSvgToPng(
+  svg: string,
+  width: number,
+  loadAsset: AssetLoader,
+): Promise<Uint8Array> {
+  const wasmPromise = ensureWasm(loadAsset);
+  const fontsPromise = loadFontBuffers(loadAsset);
+
+  await wasmPromise;
+  const [fontRegular, fontBold] = await fontsPromise;
 
   const resvg = new Resvg(svg, {
     fitTo: {
@@ -22,7 +52,7 @@ export async function renderSvgToPng(svg: string, width: number): Promise<Uint8A
       value: width,
     },
     font: {
-      fontBuffers: [new Uint8Array(fontRegular), new Uint8Array(fontBold)],
+      fontBuffers: [fontRegular, fontBold],
       defaultFontFamily: 'Noto Sans CJK TC',
     },
   });

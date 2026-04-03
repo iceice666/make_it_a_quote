@@ -6,8 +6,3 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./src/public"
 binding = "ASSETS"
-
-[[rules]]
-type = "Data"
-globs = ["**/*.otf", "**/*.wasm"]
-fallthrough = true
