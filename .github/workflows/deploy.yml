@@ -13,6 +13,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: default
     permissions:
       contents: read
 
@@ -33,5 +34,5 @@ jobs:
 
       - name: Trigger Cloudflare deploy hook
         env:
-          CLOUDFLARE_DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK_URL }}
-        run: curl --fail --silent --show-error --request POST "$CLOUDFLARE_DEPLOY_HOOK_URL"
+          HOOK_URL: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error --request POST "$HOOK_URL"
