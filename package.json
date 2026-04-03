@@ -1,0 +1,24 @@
+{
+  "name": "make_it_a_quote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "check": "bunx tsc --noEmit",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "elysia": "^1.1.18"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260403.1",
+    "bun-types": "latest",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.80.0"
+  }
+}
