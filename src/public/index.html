@@ -292,6 +292,21 @@
         color: var(--success);
       }
 
+      .footnote {
+        margin: 0;
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(250, 166, 26, 0.25);
+        background: rgba(250, 166, 26, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .footnote strong {
+        color: var(--text);
+      }
+
       .preview {
         margin-top: 24px;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -582,6 +597,10 @@
           <img id="previewImage" alt="" />
         </div>
       </section>
+
+      <p class="footnote">
+        <strong>Disclaimer:</strong> You are responsible for the text and identities used in generated images, including having permission to use any names, avatars, or likenesses. Do not use this tool to impersonate others, make false attributions, or violate applicable laws, rights, or platform rules.
+      </p>
     </main>
 
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
