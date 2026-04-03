@@ -1,8 +1,16 @@
 name = "make-it-a-quote"
 main = "src/worker.ts"
-compatibility_date = "2026-04-03"
+compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
+routes = [
+  { pattern = "miaq.justaslime.dev", zone_name = "justaslime.dev", custom_domain = true }
+]
 
 [assets]
 directory = "./src/public"
 binding = "ASSETS"
+
+
+
+[observability]
+logs = {enabled=true}
