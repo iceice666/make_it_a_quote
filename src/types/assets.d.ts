@@ -4,6 +4,6 @@ declare module '*.otf' {
 }
 
 declare module '*.wasm' {
-  const value: ArrayBuffer | string;
+  const value: ArrayBuffer | WebAssembly.Module | string;
   export default value;
 }

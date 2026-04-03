@@ -1,8 +1,8 @@
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
+import wasmModule from '@resvg/resvg-wasm/index_bg.wasm';
 
 type AssetLoader = (path: string) => Promise<Uint8Array>;
 
-const WASM_PATH = '/_worker/index_bg.wasm';
 const FONT_PATHS = [
   '/_worker/NotoSansCJKtc-Regular.otf',
   '/_worker/NotoSansCJKtc-Bold.otf',
@@ -11,11 +11,9 @@ const FONT_PATHS = [
 let wasmReady: Promise<void> | null = null;
 let fontBuffersReady: Promise<Uint8Array[]> | null = null;
 
-function ensureWasm(loadAsset: AssetLoader): Promise<void> {
+function ensureWasm(): Promise<void> {
   if (!wasmReady) {
-    wasmReady = loadAsset(WASM_PATH)
-      .then((wasmBinary) => initWasm(wasmBinary))
-      .catch((error) => {
+    wasmReady = initWasm(wasmModule as WebAssembly.Module).catch((error) => {
         wasmReady = null;
         throw error;
       });
@@ -40,7 +38,7 @@ export async function renderSvgToPng(
   width: number,
   loadAsset: AssetLoader,
 ): Promise<Uint8Array> {
-  const wasmPromise = ensureWasm(loadAsset);
+  const wasmPromise = ensureWasm();
   const fontsPromise = loadFontBuffers(loadAsset);
 
   await wasmPromise;
