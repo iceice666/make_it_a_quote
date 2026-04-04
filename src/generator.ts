@@ -438,6 +438,11 @@ function computeLayout(template: TemplateVariant, content: string): ComputedLayo
   return computeLeftHalfLayout(content);
 }
 
+export function getAvatarFetchSize(template: TemplateVariant, content: string): number {
+  const layout = computeLayout(template, content);
+  return layout.type === 'top-half' ? layout.imageHeight : layout.height;
+}
+
 function renderLeftHalfLayout(
   avatarData: string,
   attribution: { line1: string; line2: string },

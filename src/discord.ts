@@ -22,8 +22,11 @@ function getDefaultAvatarIndex(discordId: string): number {
 }
 
 function normalizeSize(size: number): number {
-  const allowed = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
-  return allowed.includes(size) ? size : 128;
+  if (!Number.isFinite(size)) {
+    return 128;
+  }
+
+  return Math.min(4096, Math.max(16, Math.round(size)));
 }
 
 function pickExtension(hash: string): 'gif' | 'png' {

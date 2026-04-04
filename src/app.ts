@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import type { ElysiaAdapter } from 'elysia';
 import { displayAvatarURL, fetchAvatarBuffer, fetchDiscordUser, getDisplayName } from './discord';
-import { buildQuoteSvg } from './generator';
+import { buildQuoteSvg, getAvatarFetchSize } from './generator';
 import { SimpleCache } from './cache';
 import { RateLimiter } from './rate-limiter';
 
@@ -168,7 +168,7 @@ export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia 
         const user = await fetchDiscordUser(discordId, botToken);
         const displayName = normalizedDisplayName || (getDisplayName(user) || user.id).slice(0, 64);
 
-        const avatar = await fetchAvatarBuffer(user, 256);
+        const avatar = await fetchAvatarBuffer(user, getAvatarFetchSize(template, content));
         const rendered = buildQuoteSvg({
           avatarBuffer: avatar.buffer,
           avatarContentType: avatar.contentType,
