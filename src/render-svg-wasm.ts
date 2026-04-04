@@ -6,6 +6,7 @@ type AssetLoader = (path: string) => Promise<Uint8Array>;
 const FONT_PATHS = [
   '/_worker/NotoSansCJKtc-Regular.otf',
   '/_worker/NotoSansCJKtc-Bold.otf',
+  '/_worker/Noto-COLRv1.ttf',
 ] as const;
 
 let wasmReady: Promise<void> | null = null;
@@ -42,7 +43,7 @@ export async function renderSvgToPng(
   const fontsPromise = loadFontBuffers(loadAsset);
 
   await wasmPromise;
-  const [fontRegular, fontBold] = await fontsPromise;
+  const [fontRegular, fontBold, fontEmoji] = await fontsPromise;
 
   const resvg = new Resvg(svg, {
     fitTo: {
@@ -50,7 +51,7 @@ export async function renderSvgToPng(
       value: width,
     },
     font: {
-      fontBuffers: [fontRegular, fontBold],
+      fontBuffers: [fontRegular, fontBold, fontEmoji],
       defaultFontFamily: 'Noto Sans CJK TC',
     },
   });

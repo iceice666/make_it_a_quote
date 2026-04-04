@@ -615,7 +615,7 @@ export function buildQuoteSvg(params: QuoteImageInput): { svg: string; width: nu
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${rendered.width}" height="${rendered.height}" viewBox="0 0 ${rendered.width} ${rendered.height}" xmlns="http://www.w3.org/2000/svg">
-  <g font-family="Noto Sans CJK TC, Noto Sans TC, Segoe UI, Helvetica Neue, Arial, sans-serif">
+  <g font-family="Noto Sans CJK TC, Noto Sans TC, Noto Color Emoji, Noto Sans Emoji, Segoe UI Emoji, Apple Color Emoji, Segoe UI, Helvetica Neue, Arial, sans-serif">
     ${rendered.body}
   </g>
 </svg>`;
