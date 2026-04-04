@@ -6,6 +6,9 @@ const MAX_LAYOUT_ATTEMPTS = 1000;
 const HEIGHT_STEP = 48;
 const MIN_TEXT_FONT_SIZE = 10;
 const EMOJI_GRAPHEME_WIDTH = 1.12;
+const ZERO_ADVANCE_CHARACTER_REGEX = /[\p{Mark}\p{Default_Ignorable_Code_Point}]/u;
+
+export const MAX_VISIBLE_CONTENT_LENGTH = 500;
 
 export const TEMPLATE_VARIANTS = ['left-half', 'top-half'] as const;
 export type TemplateVariant = (typeof TEMPLATE_VARIANTS)[number];
@@ -56,6 +59,10 @@ type TopHalfLayout = RenderDimensions & {
 
 type ComputedLayout = LeftHalfLayout | TopHalfLayout;
 
+type TextMeasureOptions = {
+  monospace?: boolean;
+};
+
 function escapeXml(input: string): string {
   return input
     .replaceAll('&', '&amp;')
@@ -63,6 +70,40 @@ function escapeXml(input: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&apos;');
+}
+
+function isLineBreakGrapheme(grapheme: string): boolean {
+  return grapheme === '\n' || grapheme === '\r' || grapheme === '\r\n';
+}
+
+function isZeroAdvanceCharacter(char: string): boolean {
+  return ZERO_ADVANCE_CHARACTER_REGEX.test(char);
+}
+
+function hasCountableGlyph(grapheme: string): boolean {
+  if (isEmojiGrapheme(grapheme) || isLineBreakGrapheme(grapheme)) {
+    return true;
+  }
+
+  for (const char of grapheme) {
+    if (!isZeroAdvanceCharacter(char)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function countDisplayCharacters(text: string): number {
+  let count = 0;
+
+  for (const grapheme of getGraphemes(text)) {
+    if (hasCountableGlyph(grapheme)) {
+      count += 1;
+    }
+  }
+
+  return count;
 }
 
 function getCharacterWidth(char: string): number {
@@ -113,22 +154,34 @@ function getCharacterWidth(char: string): number {
   return 0.5;
 }
 
-function getGraphemeWidth(grapheme: string): number {
+function getGraphemeWidth(grapheme: string, options: TextMeasureOptions = {}): number {
+  if (isLineBreakGrapheme(grapheme)) {
+    return 0;
+  }
+
   if (isEmojiGrapheme(grapheme)) {
-    return EMOJI_GRAPHEME_WIDTH;
+    return options.monospace ? 1 : EMOJI_GRAPHEME_WIDTH;
+  }
+
+  if (options.monospace) {
+    return hasCountableGlyph(grapheme) ? 1 : 0;
   }
 
   let width = 0;
   for (const char of grapheme) {
+    if (isZeroAdvanceCharacter(char)) {
+      continue;
+    }
+
     width += getCharacterWidth(char);
   }
   return width;
 }
 
-function getTextWidth(text: string): number {
+function getTextWidth(text: string, options: TextMeasureOptions = {}): number {
   let width = 0;
   for (const grapheme of getGraphemes(text)) {
-    width += getGraphemeWidth(grapheme);
+    width += getGraphemeWidth(grapheme, options);
   }
   return width;
 }
@@ -137,11 +190,11 @@ function trimLineEnd(line: string): string {
   return line.replace(/[ \t]+$/g, '');
 }
 
-function truncateLineToWidth(line: string, maxWidth: number, suffix = '...'): string {
-  const suffixWidth = getTextWidth(suffix);
+function truncateLineToWidth(line: string, maxWidth: number, options: TextMeasureOptions = {}, suffix = '...'): string {
+  const suffixWidth = getTextWidth(suffix, options);
   const graphemes = getGraphemes(trimLineEnd(line));
 
-  while (graphemes.length > 0 && getTextWidth(graphemes.join('')) + suffixWidth > maxWidth) {
+  while (graphemes.length > 0 && getTextWidth(graphemes.join(''), options) + suffixWidth > maxWidth) {
     graphemes.pop();
   }
 
@@ -157,8 +210,9 @@ function pushWrappedToken(params: {
   lines: string[];
   currentLine: string;
   truncated: boolean;
+  options?: TextMeasureOptions;
 }): { currentLine: string; truncated: boolean } {
-  const { token, maxWidth, maxLines, lines, truncated } = params;
+  const { token, maxWidth, maxLines, lines, truncated, options = {} } = params;
   let { currentLine } = params;
 
   if (truncated) {
@@ -171,18 +225,18 @@ function pushWrappedToken(params: {
   }
 
   const candidate = currentLine + normalizedToken;
-  if (getTextWidth(candidate) <= maxWidth) {
+  if (getTextWidth(candidate, options) <= maxWidth) {
     return { currentLine: candidate, truncated };
   }
 
   if (currentLine) {
     lines.push(trimLineEnd(currentLine));
     if (lines.length >= maxLines) {
-      lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth);
+      lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth, options);
       return { currentLine: '', truncated: true };
     }
     currentLine = normalizedToken === ' ' ? '' : normalizedToken;
-    if (currentLine && getTextWidth(currentLine) <= maxWidth) {
+    if (currentLine && getTextWidth(currentLine, options) <= maxWidth) {
       return { currentLine, truncated };
     }
   } else if (normalizedToken === ' ') {
@@ -192,10 +246,10 @@ function pushWrappedToken(params: {
   let fragment = '';
   for (const grapheme of getGraphemes(normalizedToken)) {
     const next = fragment + grapheme;
-    if (fragment && getTextWidth(next) > maxWidth) {
+    if (fragment && getTextWidth(next, options) > maxWidth) {
       lines.push(trimLineEnd(fragment));
       if (lines.length >= maxLines) {
-        lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth);
+        lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth, options);
         return { currentLine: '', truncated: true };
       }
       fragment = grapheme === ' ' ? '' : grapheme;
@@ -207,7 +261,12 @@ function pushWrappedToken(params: {
   return { currentLine: fragment, truncated };
 }
 
-function wrapText(content: string, maxWidth: number, maxLines = Number.POSITIVE_INFINITY): { lines: string[]; truncated: boolean } {
+function wrapText(
+  content: string,
+  maxWidth: number,
+  options: TextMeasureOptions = {},
+  maxLines = Number.POSITIVE_INFINITY,
+): { lines: string[]; truncated: boolean } {
   const normalized = content.trim().replace(/\r\n?/g, '\n');
   const lines: string[] = [];
   let currentLine = '';
@@ -227,6 +286,7 @@ function wrapText(content: string, maxWidth: number, maxLines = Number.POSITIVE_
         lines,
         currentLine,
         truncated,
+        options,
       });
       currentLine = result.currentLine;
       truncated = result.truncated;
@@ -239,7 +299,7 @@ function wrapText(content: string, maxWidth: number, maxLines = Number.POSITIVE_
       lines.push(trimLineEnd(currentLine));
       currentLine = '';
       if (lines.length >= maxLines) {
-        lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth);
+        lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth, options);
         return { lines, truncated: true };
       }
     }
@@ -285,12 +345,43 @@ function renderInlineText(params: {
   size: number;
   weight: number;
   anchor?: 'start' | 'middle' | 'end';
+  monospace?: boolean;
 }): string {
-  const { line, x, y, color, size, weight, anchor = 'start' } = params;
+  const { line, x, y, color, size, weight, anchor = 'start', monospace = false } = params;
   const graphemes = getGraphemes(line);
-  const lineWidth = getTextWidth(line) * size;
+  const lineWidth = getTextWidth(line, { monospace }) * size;
   const startX = anchor === 'middle' ? x - lineWidth / 2 : anchor === 'end' ? x - lineWidth : x;
   const nodes: string[] = [];
+
+  if (monospace) {
+    let cursorWidth = 0;
+
+    for (const grapheme of graphemes) {
+      const graphemeWidth = getGraphemeWidth(grapheme, { monospace: true });
+      if (graphemeWidth <= 0) {
+        continue;
+      }
+
+      const glyphX = roundPx(startX + cursorWidth * size);
+      const glyphWidth = roundPx(graphemeWidth * size);
+      const emojiHref = getEmojiHref(grapheme);
+
+      if (emojiHref) {
+        nodes.push(
+          `<image href="${emojiHref}" x="${glyphX}" y="${roundPx(y - size * 0.93)}" width="${glyphWidth}" height="${glyphWidth}" preserveAspectRatio="xMidYMid meet" />`,
+        );
+      } else if (!/^\s+$/.test(grapheme)) {
+        nodes.push(
+          `<text x="${glyphX}" y="${y}" fill="${color}" font-size="${size}" font-weight="${weight}" text-anchor="start" textLength="${glyphWidth}" lengthAdjust="spacingAndGlyphs">${escapeXml(grapheme)}</text>`,
+        );
+      }
+
+      cursorWidth += graphemeWidth;
+    }
+
+    return nodes.join('');
+  }
+
   let cursorWidth = 0;
   let bufferedText = '';
   let bufferedTextStart = 0;
@@ -337,8 +428,9 @@ function renderTextLines(params: {
   size: number;
   weight: number;
   anchor?: 'start' | 'middle' | 'end';
+  monospace?: boolean;
 }): string {
-  const { lines, x, y, lineHeight, color, size, weight, anchor = 'start' } = params;
+  const { lines, x, y, lineHeight, color, size, weight, anchor = 'start', monospace = false } = params;
   return lines
     .map((line, idx) => renderInlineText({
       line,
@@ -348,6 +440,7 @@ function renderTextLines(params: {
       size,
       weight,
       anchor,
+      monospace,
     }))
     .join('');
 }
@@ -381,12 +474,13 @@ function buildTextBlockLayout(params: {
   minFontSize: number;
   maxFontSize: number;
   lineHeightRatio: number;
+  options?: TextMeasureOptions;
 }): TextBlockLayout | null {
-  const { content, availableWidth, availableHeight, minFontSize, maxFontSize, lineHeightRatio } = params;
+  const { content, availableWidth, availableHeight, minFontSize, maxFontSize, lineHeightRatio, options = {} } = params;
 
   for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 1) {
     const maxWidth = availableWidth / fontSize;
-    const wrapped = wrapText(content, maxWidth);
+    const wrapped = wrapText(content, maxWidth, options);
     const lineHeight = Math.ceil(fontSize * lineHeightRatio);
     const quoteHeight = wrapped.lines.length * lineHeight;
     const attributionLine1Size = Math.max(18, Math.round(fontSize * 0.68));
@@ -413,7 +507,7 @@ function buildTextBlockLayout(params: {
   return null;
 }
 
-function computeLeftHalfLayout(content: string): LeftHalfLayout {
+function computeLeftHalfLayout(content: string, options: TextMeasureOptions = {}): LeftHalfLayout {
   for (let attempt = 0; attempt < MAX_LAYOUT_ATTEMPTS; attempt += 1) {
     const dimensions = getLandscapeDimensions(MIN_HEIGHT + attempt * HEIGHT_STEP);
     const imageWidth = Math.round(dimensions.width * 0.49);
@@ -431,6 +525,7 @@ function computeLeftHalfLayout(content: string): LeftHalfLayout {
       minFontSize: MIN_TEXT_FONT_SIZE,
       maxFontSize: 34,
       lineHeightRatio: 1.18,
+      options,
     });
 
     if (text) {
@@ -458,7 +553,7 @@ function computeLeftHalfLayout(content: string): LeftHalfLayout {
   throw new Error('Unable to fit quote into left-half layout');
 }
 
-function computeTopHalfLayout(content: string): TopHalfLayout {
+function computeTopHalfLayout(content: string, options: TextMeasureOptions = {}): TopHalfLayout {
   for (let attempt = 0; attempt < MAX_LAYOUT_ATTEMPTS; attempt += 1) {
     const targetWidth = MIN_HEIGHT + attempt * HEIGHT_STEP;
     const horizontalPadding = Math.max(22, Math.round(targetWidth * 0.06));
@@ -471,6 +566,7 @@ function computeTopHalfLayout(content: string): TopHalfLayout {
       minFontSize: MIN_TEXT_FONT_SIZE,
       maxFontSize: 32,
       lineHeightRatio: 1.16,
+      options,
     });
 
     if (text) {
@@ -503,16 +599,16 @@ function computeTopHalfLayout(content: string): TopHalfLayout {
   throw new Error('Unable to fit quote into top-half layout');
 }
 
-function computeLayout(template: TemplateVariant, content: string): ComputedLayout {
+function computeLayout(template: TemplateVariant, content: string, options: TextMeasureOptions = {}): ComputedLayout {
   if (template === 'top-half') {
-    return computeTopHalfLayout(content);
+    return computeTopHalfLayout(content, options);
   }
 
-  return computeLeftHalfLayout(content);
+  return computeLeftHalfLayout(content, options);
 }
 
-export function getAvatarFetchSize(template: TemplateVariant, content: string): number {
-  const layout = computeLayout(template, content);
+export function getAvatarFetchSize(template: TemplateVariant, content: string, options: TextMeasureOptions = {}): number {
+  const layout = computeLayout(template, content, options);
   return layout.type === 'top-half' ? layout.imageHeight : layout.height;
 }
 
@@ -520,6 +616,7 @@ function renderLeftHalfLayout(
   avatarData: string,
   attribution: { line1: string; line2: string },
   layout: LeftHalfLayout,
+  monospace = false,
 ): string {
   const textNodes = renderTextLines({
     lines: layout.text.lines,
@@ -530,6 +627,7 @@ function renderLeftHalfLayout(
     size: layout.text.fontSize,
     weight: 600,
     anchor: 'middle',
+    monospace,
   });
 
   return `
@@ -575,6 +673,7 @@ function renderLeftHalfLayout(
       size: layout.text.attributionLine1Size,
       weight: 500,
       anchor: 'middle',
+      monospace,
     })}
     ${renderInlineText({
       line: attribution.line2,
@@ -584,6 +683,7 @@ function renderLeftHalfLayout(
       size: layout.text.attributionLine2Size,
       weight: 500,
       anchor: 'middle',
+      monospace,
     })}
   </g>`;
 }
@@ -592,6 +692,7 @@ function renderTopHalfLayout(
   avatarData: string,
   attribution: { line1: string; line2: string },
   layout: TopHalfLayout,
+  monospace = false,
 ): string {
   const textNodes = renderTextLines({
     lines: layout.text.lines,
@@ -602,6 +703,7 @@ function renderTopHalfLayout(
     size: layout.text.fontSize,
     weight: 600,
     anchor: 'middle',
+    monospace,
   });
 
   return `
@@ -648,6 +750,7 @@ function renderTopHalfLayout(
       size: layout.text.attributionLine1Size,
       weight: 500,
       anchor: 'middle',
+      monospace,
     })}
     ${renderInlineText({
       line: attribution.line2,
@@ -657,6 +760,7 @@ function renderTopHalfLayout(
       size: layout.text.attributionLine2Size,
       weight: 500,
       anchor: 'middle',
+      monospace,
     })}
   </g>`;
 }
@@ -668,25 +772,26 @@ function renderLayout(params: {
   displayName: string;
   attributionSuffix: string;
   userHandle: string;
+  monospace?: boolean;
 }): { body: string; width: number; height: number } {
-  const { template, avatarData, content, displayName, attributionSuffix, userHandle } = params;
+  const { template, avatarData, content, displayName, attributionSuffix, userHandle, monospace = false } = params;
   const attribution = buildAttribution({
     displayName,
     attributionSuffix,
     userHandle,
   });
-  const layout = computeLayout(template, content);
+  const layout = computeLayout(template, content, { monospace });
 
   if (layout.type === 'top-half') {
     return {
-      body: renderTopHalfLayout(avatarData, attribution, layout),
+      body: renderTopHalfLayout(avatarData, attribution, layout, monospace),
       width: layout.width,
       height: layout.height,
     };
   }
 
   return {
-    body: renderLeftHalfLayout(avatarData, attribution, layout),
+    body: renderLeftHalfLayout(avatarData, attribution, layout, monospace),
     width: layout.width,
     height: layout.height,
   };
@@ -700,6 +805,7 @@ export type QuoteImageInput = {
   attributionSuffix?: string;
   userHandle: string;
   template: TemplateVariant;
+  monospace?: boolean;
 };
 
 export function buildQuoteSvg(params: QuoteImageInput): { svg: string; width: number; height: number } {
@@ -711,6 +817,7 @@ export function buildQuoteSvg(params: QuoteImageInput): { svg: string; width: nu
     attributionSuffix = '',
     userHandle,
     template,
+    monospace = false,
   } = params;
 
   const avatarData = `data:${avatarContentType};base64,${base64ArrayBuffer(avatarBuffer)}`;
@@ -721,6 +828,7 @@ export function buildQuoteSvg(params: QuoteImageInput): { svg: string; width: nu
     displayName,
     attributionSuffix,
     userHandle,
+    monospace,
   });
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>

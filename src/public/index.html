@@ -549,16 +549,17 @@
 
         <label for="content">
           Quote Content
+          <span class="label-hint">500 visible characters max. Zero-width characters are ignored.</span>
           <span class="input-wrapper">
             <textarea
               id="content"
               name="content"
-              maxlength="500"
+              maxlength="4000"
               required
               placeholder="Enter the quote text here..."
               aria-describedby="content-counter"
             ></textarea>
-            <span id="content-counter" class="char-counter" aria-live="polite">0 / 500</span>
+            <span id="content-counter" class="char-counter" aria-live="polite">0 / 500 visible</span>
           </span>
         </label>
 
@@ -580,6 +581,11 @@
             placeholder="e.g. probably said it"
             autocomplete="off"
           />
+        </label>
+
+        <label class="toggle" for="monospace">
+          <input id="monospace" name="monospace" type="checkbox" />
+          <span>Monospace mode</span>
         </label>
 
         <div class="actions">

@@ -12,6 +12,53 @@ let isProcessing = false;
 let latestImageUrl = '';
 
 const MAX_CONTENT_LENGTH = 500;
+const graphemeSegmenter =
+  typeof Intl !== 'undefined' && 'Segmenter' in Intl
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+const ZERO_ADVANCE_CHARACTER_REGEX = /[\p{Mark}\p{Default_Ignorable_Code_Point}]/u;
+
+function getGraphemes(text) {
+  if (!text) {
+    return [];
+  }
+
+  if (graphemeSegmenter) {
+    return Array.from(graphemeSegmenter.segment(text), ({ segment }) => segment);
+  }
+
+  return Array.from(text);
+}
+
+function isLineBreakGrapheme(grapheme) {
+  return grapheme === '\n' || grapheme === '\r' || grapheme === '\r\n';
+}
+
+function hasCountableGlyph(grapheme) {
+  if (isLineBreakGrapheme(grapheme)) {
+    return true;
+  }
+
+  for (const char of grapheme) {
+    if (!ZERO_ADVANCE_CHARACTER_REGEX.test(char)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function countDisplayCharacters(text) {
+  let count = 0;
+
+  for (const grapheme of getGraphemes(text)) {
+    if (hasCountableGlyph(grapheme)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
 
 function showToast(message, type = 'info', duration = 4000) {
   const toast = document.createElement('div');
@@ -71,8 +118,8 @@ function setProcessing(processing) {
 }
 
 function updateCharCounter() {
-  const length = contentTextarea.value.length;
-  contentCounter.textContent = `${length} / ${MAX_CONTENT_LENGTH}`;
+  const length = countDisplayCharacters(contentTextarea.value);
+  contentCounter.textContent = `${length} / ${MAX_CONTENT_LENGTH} visible`;
   contentCounter.className = 'char-counter';
   if (length >= MAX_CONTENT_LENGTH) {
     contentCounter.classList.add('error');
@@ -146,7 +193,9 @@ form.addEventListener('submit', async (event) => {
     attributionSuffix: String(formData.get('attributionSuffix') || '').trim(),
     content: String(formData.get('content') || '').trim(),
     template: String(formData.get('template') || 'left-half').trim(),
+    monospace: formData.get('monospace') === 'on',
   };
+  const contentLength = countDisplayCharacters(payload.content);
 
   if (!payload.discordId) {
     setStatus('Please enter a Discord ID.', 'error');
@@ -162,9 +211,16 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (!payload.content) {
+  if (contentLength === 0) {
     setStatus('Please enter quote content.', 'error');
-    showToast('Quote content is required.', 'error');
+    showToast('Quote content needs at least one visible character.', 'error');
+    contentTextarea.focus();
+    return;
+  }
+
+  if (contentLength > MAX_CONTENT_LENGTH) {
+    setStatus(`Quote content must be ${MAX_CONTENT_LENGTH} visible characters or fewer.`, 'error');
+    showToast(`Quote content exceeds the ${MAX_CONTENT_LENGTH}-character visible limit.`, 'error');
     contentTextarea.focus();
     return;
   }

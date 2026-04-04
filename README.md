@@ -85,7 +85,8 @@ Example request:
   "content": "電爆所有人",
   "displayName": "Prof. Kohiro",
   "attributionSuffix": "沒說過",
-  "template": "left-half"
+  "template": "left-half",
+  "monospace": false
 }
 ```
 
@@ -140,6 +141,7 @@ The root route serves a lightweight browser UI that lets you:
 - override the display name
 - add optional attribution text
 - choose a layout template
+- enable monospace mode for equal-width glyph cells
 - preview the generated PNG
 
 ## Cloudflare Deployment

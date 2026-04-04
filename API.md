@@ -14,7 +14,8 @@ Generates a quote image from a Discord user and quote text.
   "content": "Small choices become big changes.",
   "displayName": "ice",
   "attributionSuffix": "in #general",
-  "template": "left-half"
+  "template": "left-half",
+  "monospace": true
 }
 ```
 
@@ -23,10 +24,11 @@ Generates a quote image from a Discord user and quote text.
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `discordId` | string | Yes | 17-20 digit Discord user ID |
-| `content` | string | Yes | Quote text, 1-500 chars |
+| `content` | string | Yes | Quote text, 1-500 visible characters; zero-width characters are ignored for the limit |
 | `displayName` | string | No | Override name, max 64 chars |
 | `attributionSuffix` | string | No | Extra attribution text, max 80 chars |
 | `template` | string | No | `left-half` or `top-half`; defaults to `left-half` |
+| `monospace` | boolean | No | Forces all rendered graphemes into equal-width cells |
 
 ### Success response
 
@@ -57,7 +59,8 @@ curl -X POST http://localhost:3000/api/generate \
     "content": "電爆所有人",
     "displayName": "Prof. Kohiro",
     "attributionSuffix": "沒說過",
-    "template": "left-half"
+    "template": "left-half",
+    "monospace": false
   }'
 ```
 

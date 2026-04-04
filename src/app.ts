@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import type { ElysiaAdapter } from 'elysia';
 import { displayAvatarURL, fetchAvatarBuffer, fetchDiscordUser, getDisplayName } from './discord';
-import { buildQuoteSvg, getAvatarFetchSize } from './generator';
+import { buildQuoteSvg, countDisplayCharacters, getAvatarFetchSize, MAX_VISIBLE_CONTENT_LENGTH } from './generator';
 import { SimpleCache } from './cache';
 import { RateLimiter } from './rate-limiter';
 
@@ -155,9 +155,27 @@ export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia 
         const inputDisplayName = body.displayName?.trim();
         const attributionSuffix = body.attributionSuffix?.trim() ?? '';
         const template = body.template ?? 'left-half';
+        const monospace = body.monospace ?? false;
         const normalizedDisplayName = inputDisplayName?.slice(0, 64) ?? '';
+        const contentLength = countDisplayCharacters(content);
 
-        const cacheKey = `${discordId}_${normalizedDisplayName}_${content}_${template}_${attributionSuffix}`;
+        if (contentLength === 0) {
+          set.status = 400;
+          return {
+            error: 'Failed to generate quote image',
+            detail: 'Quote content must include at least one visible character.',
+          };
+        }
+
+        if (contentLength > MAX_VISIBLE_CONTENT_LENGTH) {
+          set.status = 400;
+          return {
+            error: 'Failed to generate quote image',
+            detail: `Quote content must be ${MAX_VISIBLE_CONTENT_LENGTH} visible characters or fewer.`,
+          };
+        }
+
+        const cacheKey = `${discordId}_${normalizedDisplayName}_${content}_${template}_${attributionSuffix}_${monospace ? 'mono' : 'normal'}`;
         const cachedImage = imageCache.get(cacheKey);
         if (cachedImage) {
           set.headers['content-type'] = 'image/png';
@@ -168,7 +186,7 @@ export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia 
         const user = await fetchDiscordUser(discordId, botToken);
         const displayName = normalizedDisplayName || (getDisplayName(user) || user.id).slice(0, 64);
 
-        const avatar = await fetchAvatarBuffer(user, getAvatarFetchSize(template, content));
+        const avatar = await fetchAvatarBuffer(user, getAvatarFetchSize(template, content, { monospace }));
         const rendered = buildQuoteSvg({
           avatarBuffer: avatar.buffer,
           avatarContentType: avatar.contentType,
@@ -177,6 +195,7 @@ export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia 
           attributionSuffix,
           userHandle: user.username,
           template,
+          monospace,
         });
         const image = await runtime.renderQuoteImage(rendered.svg, rendered.width);
 
@@ -198,10 +217,11 @@ export function createApp(runtime: AppRuntime, adapter?: ElysiaAdapter): Elysia 
         discordId: t.String({
           pattern: '^[0-9]{17,20}$',
         }),
-        content: t.String({ minLength: 1, maxLength: 500 }),
+        content: t.String({ minLength: 1, maxLength: 4000 }),
         displayName: t.Optional(t.String({ maxLength: 64 })),
         attributionSuffix: t.Optional(t.String({ maxLength: 80 })),
         template: t.Optional(templateSchema),
+        monospace: t.Optional(t.Boolean()),
       }),
     },
   );
