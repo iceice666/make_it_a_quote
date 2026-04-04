@@ -1,5 +1,6 @@
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
 import wasmModule from '@resvg/resvg-wasm/index_bg.wasm';
+import { isEmojiHref, loadEmojiAsset } from './emoji';
 
 type AssetLoader = (path: string) => Promise<Uint8Array>;
 
@@ -55,6 +56,14 @@ export async function renderSvgToPng(
       defaultFontFamily: 'Noto Sans CJK TC',
     },
   });
+
+  const imageHrefs = resvg.imagesToResolve().filter(isEmojiHref);
+  await Promise.all(
+    imageHrefs.map(async (href) => {
+      const buffer = await loadEmojiAsset(href);
+      resvg.resolveImage(href, buffer);
+    }),
+  );
 
   const png = resvg.render().asPng();
   resvg.free();

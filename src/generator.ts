@@ -1,8 +1,11 @@
+import { getEmojiHref, getGraphemes, isEmojiGrapheme } from './emoji';
+
 const LANDSCAPE_RATIO = 2;
 const MIN_HEIGHT = 420;
 const MAX_LAYOUT_ATTEMPTS = 1000;
 const HEIGHT_STEP = 48;
 const MIN_TEXT_FONT_SIZE = 10;
+const EMOJI_GRAPHEME_WIDTH = 1.12;
 
 export const TEMPLATE_VARIANTS = ['left-half', 'top-half'] as const;
 export type TemplateVariant = (typeof TEMPLATE_VARIANTS)[number];
@@ -110,10 +113,22 @@ function getCharacterWidth(char: string): number {
   return 0.5;
 }
 
+function getGraphemeWidth(grapheme: string): number {
+  if (isEmojiGrapheme(grapheme)) {
+    return EMOJI_GRAPHEME_WIDTH;
+  }
+
+  let width = 0;
+  for (const char of grapheme) {
+    width += getCharacterWidth(char);
+  }
+  return width;
+}
+
 function getTextWidth(text: string): number {
   let width = 0;
-  for (const char of text) {
-    width += getCharacterWidth(char);
+  for (const grapheme of getGraphemes(text)) {
+    width += getGraphemeWidth(grapheme);
   }
   return width;
 }
@@ -124,11 +139,13 @@ function trimLineEnd(line: string): string {
 
 function truncateLineToWidth(line: string, maxWidth: number, suffix = '...'): string {
   const suffixWidth = getTextWidth(suffix);
-  let truncated = trimLineEnd(line);
+  const graphemes = getGraphemes(trimLineEnd(line));
 
-  while (truncated.length > 0 && getTextWidth(truncated) + suffixWidth > maxWidth) {
-    truncated = trimLineEnd(truncated.slice(0, -1));
+  while (graphemes.length > 0 && getTextWidth(graphemes.join('')) + suffixWidth > maxWidth) {
+    graphemes.pop();
   }
+
+  const truncated = trimLineEnd(graphemes.join(''));
 
   return truncated ? `${truncated}${suffix}` : suffix;
 }
@@ -173,15 +190,15 @@ function pushWrappedToken(params: {
   }
 
   let fragment = '';
-  for (const char of normalizedToken) {
-    const next = fragment + char;
+  for (const grapheme of getGraphemes(normalizedToken)) {
+    const next = fragment + grapheme;
     if (fragment && getTextWidth(next) > maxWidth) {
       lines.push(trimLineEnd(fragment));
       if (lines.length >= maxLines) {
         lines[maxLines - 1] = truncateLineToWidth(lines[maxLines - 1], maxWidth);
         return { currentLine: '', truncated: true };
       }
-      fragment = char === ' ' ? '' : char;
+      fragment = grapheme === ' ' ? '' : grapheme;
     } else {
       fragment = next;
     }
@@ -260,6 +277,57 @@ function buildAttribution(params: {
   };
 }
 
+function renderInlineText(params: {
+  line: string;
+  x: number;
+  y: number;
+  color: string;
+  size: number;
+  weight: number;
+  anchor?: 'start' | 'middle' | 'end';
+}): string {
+  const { line, x, y, color, size, weight, anchor = 'start' } = params;
+  const graphemes = getGraphemes(line);
+  const lineWidth = getTextWidth(line) * size;
+  const startX = anchor === 'middle' ? x - lineWidth / 2 : anchor === 'end' ? x - lineWidth : x;
+  const nodes: string[] = [];
+  let cursorWidth = 0;
+  let bufferedText = '';
+  let bufferedTextStart = 0;
+
+  const flushBufferedText = () => {
+    if (!bufferedText) {
+      return;
+    }
+
+    nodes.push(
+      `<text x="${roundPx(startX + bufferedTextStart * size)}" y="${y}" fill="${color}" font-size="${size}" font-weight="${weight}" text-anchor="start">${escapeXml(bufferedText)}</text>`,
+    );
+    bufferedText = '';
+  };
+
+  for (const grapheme of graphemes) {
+    const emojiHref = getEmojiHref(grapheme);
+    if (emojiHref) {
+      flushBufferedText();
+      const emojiSize = roundPx(getGraphemeWidth(grapheme) * size);
+      nodes.push(
+        `<image href="${emojiHref}" x="${roundPx(startX + cursorWidth * size)}" y="${roundPx(y - size * 0.93)}" width="${emojiSize}" height="${emojiSize}" preserveAspectRatio="xMidYMid meet" />`,
+      );
+    } else {
+      if (!bufferedText) {
+        bufferedTextStart = cursorWidth;
+      }
+      bufferedText += grapheme;
+    }
+
+    cursorWidth += getGraphemeWidth(grapheme);
+  }
+
+  flushBufferedText();
+  return nodes.join('');
+}
+
 function renderTextLines(params: {
   lines: string[];
   x: number;
@@ -272,10 +340,15 @@ function renderTextLines(params: {
 }): string {
   const { lines, x, y, lineHeight, color, size, weight, anchor = 'start' } = params;
   return lines
-    .map((line, idx) => {
-      const lineY = y + idx * lineHeight;
-      return `<text x="${x}" y="${lineY}" fill="${color}" font-size="${size}" font-weight="${weight}" text-anchor="${anchor}">${escapeXml(line)}</text>`;
-    })
+    .map((line, idx) => renderInlineText({
+      line,
+      x,
+      y: y + idx * lineHeight,
+      color,
+      size,
+      weight,
+      anchor,
+    }))
     .join('');
 }
 
@@ -494,8 +567,24 @@ function renderLeftHalfLayout(
   />
   <g>
     ${textNodes}
-    <text x="${layout.quoteX}" y="${layout.signatureY}" fill="#98a6b3" font-size="${layout.text.attributionLine1Size}" font-weight="500" text-anchor="middle">${escapeXml(attribution.line1)}</text>
-    <text x="${layout.quoteX}" y="${layout.signatureY + layout.text.attributionGap}" fill="#98a6b3" font-size="${layout.text.attributionLine2Size}" font-weight="500" text-anchor="middle">${escapeXml(attribution.line2)}</text>
+    ${renderInlineText({
+      line: attribution.line1,
+      x: layout.quoteX,
+      y: layout.signatureY,
+      color: '#98a6b3',
+      size: layout.text.attributionLine1Size,
+      weight: 500,
+      anchor: 'middle',
+    })}
+    ${renderInlineText({
+      line: attribution.line2,
+      x: layout.quoteX,
+      y: layout.signatureY + layout.text.attributionGap,
+      color: '#98a6b3',
+      size: layout.text.attributionLine2Size,
+      weight: 500,
+      anchor: 'middle',
+    })}
   </g>`;
 }
 
@@ -551,8 +640,24 @@ function renderTopHalfLayout(
   />
   <g>
     ${textNodes}
-    <text x="${layout.quoteX}" y="${layout.signatureY}" fill="#9fb0bc" font-size="${layout.text.attributionLine1Size}" font-weight="500" text-anchor="middle">${escapeXml(attribution.line1)}</text>
-    <text x="${layout.quoteX}" y="${layout.signatureY + layout.text.attributionGap}" fill="#9fb0bc" font-size="${layout.text.attributionLine2Size}" font-weight="500" text-anchor="middle">${escapeXml(attribution.line2)}</text>
+    ${renderInlineText({
+      line: attribution.line1,
+      x: layout.quoteX,
+      y: layout.signatureY,
+      color: '#9fb0bc',
+      size: layout.text.attributionLine1Size,
+      weight: 500,
+      anchor: 'middle',
+    })}
+    ${renderInlineText({
+      line: attribution.line2,
+      x: layout.quoteX,
+      y: layout.signatureY + layout.text.attributionGap,
+      color: '#9fb0bc',
+      size: layout.text.attributionLine2Size,
+      weight: 500,
+      anchor: 'middle',
+    })}
   </g>`;
 }
 
