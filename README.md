@@ -169,3 +169,7 @@ src/
   render-svg-wasm.ts    WASM PNG rendering for Workers
   public/               Browser UI and Worker assets
 ```
+
+
+## TODO
+- [ ] Fix emoji didn't render
