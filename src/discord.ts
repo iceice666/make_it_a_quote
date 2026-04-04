@@ -2,6 +2,7 @@ import { SimpleCache } from './cache';
 
 const DISCORD_CDN = 'https://cdn.discordapp.com';
 const DISCORD_API = 'https://discord.com/api/v10';
+const DISCORD_AVATAR_SIZES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096] as const;
 
 const userCache = new SimpleCache<DiscordUser>(600);
 const avatarCache = new SimpleCache<{ buffer: ArrayBuffer; contentType: string }>(3600);
@@ -26,7 +27,15 @@ function normalizeSize(size: number): number {
     return 128;
   }
 
-  return Math.min(4096, Math.max(16, Math.round(size)));
+  const normalized = Math.round(size);
+
+  for (const allowedSize of DISCORD_AVATAR_SIZES) {
+    if (normalized <= allowedSize) {
+      return allowedSize;
+    }
+  }
+
+  return DISCORD_AVATAR_SIZES[DISCORD_AVATAR_SIZES.length - 1];
 }
 
 function pickExtension(hash: string): 'gif' | 'png' {
