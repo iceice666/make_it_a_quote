@@ -1,4 +1,6 @@
 import { getEmojiHref, getGraphemes, isEmojiGrapheme } from './emoji';
+import regularCharacterWidths from '../assets/width_NotoSansCJKtc-Regular.json';
+import boldCharacterWidths from '../assets/width_NotoSansCJKtc-Bold.json';
 
 const LANDSCAPE_RATIO = 2;
 const MIN_HEIGHT = 420;
@@ -61,7 +63,12 @@ type ComputedLayout = LeftHalfLayout | TopHalfLayout;
 
 type TextMeasureOptions = {
   monospace?: boolean;
+  weight?: number;
 };
+
+const SPECIAL_CHARACTER_WIDTH_FALLBACKS = new Map<number, number>([
+  [0x2e3b, 3],
+]);
 
 function escapeXml(input: string): string {
   return input
@@ -106,7 +113,7 @@ export function countDisplayCharacters(text: string): number {
   return count;
 }
 
-function getCharacterWidth(char: string): number {
+function getHeuristicCharacterWidth(char: string): number {
   const code = char.codePointAt(0) ?? 0;
   if (code <= 0x7F) return 0.5;
   if (code <= 0x024F) return 0.5;
@@ -154,6 +161,18 @@ function getCharacterWidth(char: string): number {
   return 0.5;
 }
 
+function getFontCharacterWidth(char: string, options: TextMeasureOptions = {}): number {
+  const code = char.codePointAt(0) ?? 0;
+  const widthTable = options.weight === 600 ? boldCharacterWidths : regularCharacterWidths;
+  const measuredWidth = widthTable[code];
+
+  if (typeof measuredWidth === 'number' && measuredWidth > 0) {
+    return measuredWidth;
+  }
+
+  return SPECIAL_CHARACTER_WIDTH_FALLBACKS.get(code) ?? getHeuristicCharacterWidth(char);
+}
+
 function getGraphemeWidth(grapheme: string, options: TextMeasureOptions = {}): number {
   if (isLineBreakGrapheme(grapheme)) {
     return 0;
@@ -173,7 +192,7 @@ function getGraphemeWidth(grapheme: string, options: TextMeasureOptions = {}): n
       continue;
     }
 
-    width += getCharacterWidth(char);
+    width += getFontCharacterWidth(char, options);
   }
   return width;
 }
@@ -349,7 +368,7 @@ function renderInlineText(params: {
 }): string {
   const { line, x, y, color, size, weight, anchor = 'start', monospace = false } = params;
   const graphemes = getGraphemes(line);
-  const lineWidth = getTextWidth(line, { monospace }) * size;
+  const lineWidth = getTextWidth(line, { monospace, weight }) * size;
   const startX = anchor === 'middle' ? x - lineWidth / 2 : anchor === 'end' ? x - lineWidth : x;
   const nodes: string[] = [];
 
@@ -401,7 +420,7 @@ function renderInlineText(params: {
     const emojiHref = getEmojiHref(grapheme);
     if (emojiHref) {
       flushBufferedText();
-      const emojiSize = roundPx(getGraphemeWidth(grapheme) * size);
+      const emojiSize = roundPx(getGraphemeWidth(grapheme, { weight }) * size);
       nodes.push(
         `<image href="${emojiHref}" x="${roundPx(startX + cursorWidth * size)}" y="${roundPx(y - size * 0.93)}" width="${emojiSize}" height="${emojiSize}" preserveAspectRatio="xMidYMid meet" />`,
       );
@@ -412,7 +431,7 @@ function renderInlineText(params: {
       bufferedText += grapheme;
     }
 
-    cursorWidth += getGraphemeWidth(grapheme);
+    cursorWidth += getGraphemeWidth(grapheme, { weight });
   }
 
   flushBufferedText();
